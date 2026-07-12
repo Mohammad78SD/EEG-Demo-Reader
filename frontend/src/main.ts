@@ -5,7 +5,7 @@ const BATCH_SIZE = 16;
 const SAMPLE_INTERVAL_MS = 2; // 500Hz
 const WINDOW = 2500; // fixed 5s sweep window (2500 * 2ms)
 const WINDOW_MS = WINDOW * SAMPLE_INTERVAL_MS;
-const DEFAULT_VISIBLE = 32; // channels checked on load
+const DEFAULT_VISIBLE = 3; // channels checked on load
 
 const metricsEl = document.getElementById("metrics-text")!;
 const chartEl = document.getElementById("chart")!;
