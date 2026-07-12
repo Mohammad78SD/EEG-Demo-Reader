@@ -5,8 +5,14 @@ const SAMPLE_INTERVAL_MS = 2; // 500Hz
 const WINDOW = 2500; // fixed 5s sweep window (2500 * 2ms)
 const WINDOW_MS = WINDOW * SAMPLE_INTERVAL_MS;
 const DEFAULT_VISIBLE = 3; // channels checked on load
-const ERASE_AHEAD = 60; // samples (~120ms) blanked ahead of the sweep cursor
 const MIN_FRAME_MS = 33; // cap redraws at ~30fps — steadier than uncapped rAF on the Pi
+
+// Render-resolution override for benchmarking on the Pi: ?pxr=0.75 rasterizes
+// the canvas at 75% and lets CSS scale it up — quadratic cut in pixels filled
+// per frame, at the cost of slightly softer lines. Default: native ratio.
+const PX_RATIO = parseFloat(
+  new URLSearchParams(location.search).get("pxr") ?? String(window.devicePixelRatio || 1),
+);
 
 const metricsEl = document.getElementById("metrics-text")!;
 const chartEl = document.getElementById("chart")!;
@@ -18,9 +24,7 @@ let channelNames: string[] = [];
 let channelColors: string[] = [];
 
 // Fixed-position sweep buffers: index = position within the current 5s window.
-// EEG-monitor style: the cursor wraps and overwrites the previous sweep, with a
-// small NaN gap kept ERASE_AHEAD samples in front of it — the old trace stays
-// visible instead of the whole window blanking on wrap.
+// On wrap (position reaches WINDOW) the whole window clears and redraws from x=0.
 let sweepBuffers: Float64Array[] = [];
 let xs: Float64Array = new Float64Array(0);
 let position = 0;
@@ -69,13 +73,16 @@ function initBuffers(n: number) {
 }
 
 function initChart() {
+  // Rasterize at PX_RATIO (see top of file) — pixels filled per frame scale
+  // with its square, the single biggest lever on the Pi's GPU.
+  uPlot.pxRatio = PX_RATIO;
   channelColors = channelNames.map((_, i) => distinctColor(i, channelNames.length));
   const series: uPlot.Series[] = [{ label: "Time (ms)" }];
   channelNames.forEach((name, i) => {
     series.push({
       label: name,
       stroke: channelColors[i],
-      width: 1.25,
+      width: 1,
       points: { show: false },
       show: isVisible(name, i),
     });
@@ -89,6 +96,13 @@ function initChart() {
       { stroke: "#333", grid: { stroke: "#ddd" }, label: "Time (ms)" },
       { stroke: "#333", grid: { stroke: "#ddd" } },
     ],
+    // The channel picker is the UI for series visibility — uPlot's own legend
+    // (33 rows of DOM re-written on every mousemove) and cursor tracking
+    // (binary search + overlay repaint per mousemove) only burn main-thread
+    // time here. Disabling both is what stops pointer moves over the chart
+    // from competing with the render loop.
+    legend: { show: false },
+    cursor: { show: false },
   };
   plot = new uPlot(opts, [xs, ...sweepBuffers], chartEl);
   window.addEventListener("resize", () => {
@@ -121,14 +135,14 @@ function pushBatch(batch: Float32Array, n: number) {
   // n is usually BATCH_SIZE but the final message of a run may be a shorter
   // trailing partial batch — trust the actual payload size, not a constant.
   for (let i = 0; i < n; i++) {
+    if (position === WINDOW) {
+      for (const buf of sweepBuffers) buf.fill(NaN);
+      position = 0;
+    }
     for (let ch = 0; ch < numChannels; ch++) {
       sweepBuffers[ch][position] = batch[i * numChannels + ch];
     }
-    // Keep a moving NaN gap just ahead of the cursor. On the first sweep the
-    // buffer ahead is already NaN, so this only matters after the first wrap.
-    const ahead = (position + ERASE_AHEAD) % WINDOW;
-    for (const buf of sweepBuffers) buf[ahead] = NaN;
-    position = (position + 1) % WINDOW;
+    position++;
     sampleCounter++;
   }
 }
