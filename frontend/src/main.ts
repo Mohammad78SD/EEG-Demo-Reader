@@ -132,10 +132,13 @@ function pushBatch(batch: Float32Array, n: number) {
 function redraw() {
   if (!plot) return;
   // Both axes are pinned (x: fixed window, y: fixed [-60,60]), so skip
-  // uPlot's default full rescale + axis/gridline relayout on every call —
-  // it's unnecessary work when the scale ranges never change, and it was
-  // running on every tick (~15/sec), not just at the 5s sweep wrap.
+  // uPlot's default full rescale + axis/gridline relayout on every call.
+  // setData(data, false) skips its own internal commit (it only fires on
+  // the rescale path), so an explicit redraw(false, false) is required to
+  // actually repaint — rebuildPaths=false skips re-deriving the scale too,
+  // going straight to the cheap path: just re-stroke the lines.
   plot.setData([xs, ...sweepBuffers], false);
+  plot.redraw(false, false);
 }
 
 function updateMetrics(latencyMs: number) {
