@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from reader import FileReader
 from ringbuffer import RingBuffer
 
-BATCH_SIZE = 16  # samples/message, ~32ms at 500Hz
+BATCH_SIZE = 32  # samples/message, ~64ms at 500Hz
 BROADCAST_INTERVAL_S = BATCH_SIZE * 0.002
 RING_CAPACITY = 5000  # ~10s window
 

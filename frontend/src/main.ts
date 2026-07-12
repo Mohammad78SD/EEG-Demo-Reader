@@ -1,7 +1,7 @@
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 
-const BATCH_SIZE = 16;
+let BATCH_SIZE = 16; // overwritten from /api/channels before the WS connects
 const SAMPLE_INTERVAL_MS = 2; // 500Hz
 const WINDOW = 2500; // fixed 5s sweep window (2500 * 2ms)
 const WINDOW_MS = WINDOW * SAMPLE_INTERVAL_MS;
@@ -136,6 +136,7 @@ async function main() {
   const res = await fetch("/api/channels");
   const info = await res.json();
   channelNames = info.channels;
+  BATCH_SIZE = info.batch_size;
   initBuffers(channelNames.length);
   initChart();
   initPicker();
