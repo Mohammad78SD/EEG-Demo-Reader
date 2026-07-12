@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>EEG/EMG Dashboard</title>
+    <style>
+      body { margin: 0; font-family: sans-serif; background: #f4f4f0; color: #222; }
+      #metrics { padding: 8px 12px; font-size: 13px; color: #2a6b2a; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #ddd; }
+      #replay { background: #fff; color: #222; border: 1px solid #999; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+      #replay:hover { background: #eee; }
+      #chart { width: 100vw; background: #fff; }
+      #picker { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 4px 12px 8px; font-size: 12px; background: #fafaf7; border-bottom: 1px solid #ddd; }
+      #picker label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+      #picker input { margin: 0; }
+    </style>
+    <script type="module" crossorigin src="/assets/index-Djv6cp2Y.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-D1GxaB_c.css">
+  </head>
+  <body>
+    <div id="metrics">
+      <span id="metrics-text">connecting...</span>
+      <button id="replay">Replay</button>
+    </div>
+    <div id="picker"></div>
+    <div id="chart"></div>
+  </body>
+</html>
