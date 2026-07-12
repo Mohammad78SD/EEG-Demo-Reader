@@ -1,7 +1,6 @@
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 
-let BATCH_SIZE = 16; // overwritten from /api/channels before the WS connects
 const SAMPLE_INTERVAL_MS = 2; // 500Hz
 const WINDOW = 2500; // fixed 5s sweep window (2500 * 2ms)
 const WINDOW_MS = WINDOW * SAMPLE_INTERVAL_MS;
@@ -113,9 +112,11 @@ function initPicker() {
   });
 }
 
-function pushBatch(batch: Float32Array) {
-  // batch is BATCH_SIZE * numChannels, row-major (row i = sample i, cols = channels)
-  for (let i = 0; i < BATCH_SIZE; i++) {
+function pushBatch(batch: Float32Array, n: number) {
+  // batch is n * numChannels, row-major (row i = sample i, cols = channels).
+  // n is usually BATCH_SIZE but the final message of a run may be a shorter
+  // trailing partial batch — trust the actual payload size, not a constant.
+  for (let i = 0; i < n; i++) {
     if (position === WINDOW) {
       for (const buf of sweepBuffers) buf.fill(NaN);
       position = 0;
@@ -157,7 +158,6 @@ async function main() {
   const res = await fetch("/api/channels");
   const info = await res.json();
   channelNames = info.channels;
-  BATCH_SIZE = info.batch_size;
   savedVisibility = loadVisibility();
   initBuffers(channelNames.length);
   initChart();
@@ -187,10 +187,11 @@ async function main() {
     const serverTime = view.getFloat64(0, true);
     const latencyMs = Date.now() - serverTime * 1000;
     const samples = new Float32Array(buf, 8);
+    const n = samples.length / numChannels;
 
-    pushBatch(samples);
+    pushBatch(samples, n);
     msgCount++;
-    sampleCount += BATCH_SIZE;
+    sampleCount += n;
     dirty = true;
     updateMetrics(latencyMs);
   };
