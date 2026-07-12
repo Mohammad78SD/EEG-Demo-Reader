@@ -80,7 +80,7 @@ function initChart() {
     width: window.innerWidth,
     height: window.innerHeight - 80,
     series,
-    scales: { x: { time: false, range: [0, WINDOW_MS] } },
+    scales: { x: { time: false, range: [0, WINDOW_MS] }, y: { range: [-60, 60] } },
     axes: [
       { stroke: "#333", grid: { stroke: "#ddd" }, label: "Time (ms)" },
       { stroke: "#333", grid: { stroke: "#ddd" } },
@@ -131,7 +131,11 @@ function pushBatch(batch: Float32Array, n: number) {
 
 function redraw() {
   if (!plot) return;
-  plot.setData([xs, ...sweepBuffers]);
+  // Both axes are pinned (x: fixed window, y: fixed [-60,60]), so skip
+  // uPlot's default full rescale + axis/gridline relayout on every call —
+  // it's unnecessary work when the scale ranges never change, and it was
+  // running on every tick (~15/sec), not just at the 5s sweep wrap.
+  plot.setData([xs, ...sweepBuffers], false);
 }
 
 function updateMetrics(latencyMs: number) {
