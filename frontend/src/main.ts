@@ -25,6 +25,7 @@ let sampleCounter = 0;
 
 let plot: uPlot | null = null;
 let finished = false;
+let dirty = false;
 
 let msgCount = 0;
 let sampleCount = 0;
@@ -167,9 +168,21 @@ async function main() {
     pushBatch(samples);
     msgCount++;
     sampleCount += BATCH_SIZE;
-    redraw();
+    dirty = true;
     updateMetrics(latencyMs);
   };
+
+  // Redraw at whatever rate the browser can actually sustain, independent of
+  // message arrival rate. If a frame takes longer than one tick, later
+  // messages just get coalesced into the next redraw instead of queueing up.
+  function renderLoop() {
+    if (dirty) {
+      redraw();
+      dirty = false;
+    }
+    requestAnimationFrame(renderLoop);
+  }
+  requestAnimationFrame(renderLoop);
 }
 
 main();
