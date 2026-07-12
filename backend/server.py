@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from reader import FileReader
 
-BATCH_SIZE = 32  # samples/message, ~64ms at 500Hz
+BATCH_SIZE = 8  # samples/message, ~16ms at 500Hz — keeps frontend redraws near display rate; 32 (64ms) made the sweep advance in visible steps
 QUEUE_MAXSIZE = 5000  # only fills if nobody is connected to drain it
 
 reader = FileReader()

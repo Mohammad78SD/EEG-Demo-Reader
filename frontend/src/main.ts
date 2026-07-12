@@ -5,6 +5,8 @@ const SAMPLE_INTERVAL_MS = 2; // 500Hz
 const WINDOW = 2500; // fixed 5s sweep window (2500 * 2ms)
 const WINDOW_MS = WINDOW * SAMPLE_INTERVAL_MS;
 const DEFAULT_VISIBLE = 3; // channels checked on load
+const ERASE_AHEAD = 60; // samples (~120ms) blanked ahead of the sweep cursor
+const MIN_FRAME_MS = 33; // cap redraws at ~30fps — steadier than uncapped rAF on the Pi
 
 const metricsEl = document.getElementById("metrics-text")!;
 const chartEl = document.getElementById("chart")!;
@@ -16,7 +18,9 @@ let channelNames: string[] = [];
 let channelColors: string[] = [];
 
 // Fixed-position sweep buffers: index = position within the current 5s window.
-// On wrap (position reaches WINDOW) the whole window clears and redraws from x=0.
+// EEG-monitor style: the cursor wraps and overwrites the previous sweep, with a
+// small NaN gap kept ERASE_AHEAD samples in front of it — the old trace stays
+// visible instead of the whole window blanking on wrap.
 let sweepBuffers: Float64Array[] = [];
 let xs: Float64Array = new Float64Array(0);
 let position = 0;
@@ -117,14 +121,14 @@ function pushBatch(batch: Float32Array, n: number) {
   // n is usually BATCH_SIZE but the final message of a run may be a shorter
   // trailing partial batch — trust the actual payload size, not a constant.
   for (let i = 0; i < n; i++) {
-    if (position === WINDOW) {
-      for (const buf of sweepBuffers) buf.fill(NaN);
-      position = 0;
-    }
     for (let ch = 0; ch < numChannels; ch++) {
       sweepBuffers[ch][position] = batch[i * numChannels + ch];
     }
-    position++;
+    // Keep a moving NaN gap just ahead of the cursor. On the first sweep the
+    // buffer ahead is already NaN, so this only matters after the first wrap.
+    const ahead = (position + ERASE_AHEAD) % WINDOW;
+    for (const buf of sweepBuffers) buf[ahead] = NaN;
+    position = (position + 1) % WINDOW;
     sampleCounter++;
   }
 }
@@ -203,13 +207,16 @@ async function main() {
     updateMetrics(latencyMs);
   };
 
-  // Redraw at whatever rate the browser can actually sustain, independent of
-  // message arrival rate. If a frame takes longer than one tick, later
-  // messages just get coalesced into the next redraw instead of queueing up.
-  function renderLoop() {
-    if (dirty) {
+  // Redraw independent of message arrival rate, capped at ~30fps: a steady
+  // 30 reads smoother on the Pi than uncapped 60 with occasional long frames,
+  // and halves the per-second path-rebuild cost when many channels are on.
+  // Messages landing between redraws just coalesce into the next one.
+  let lastDraw = 0;
+  function renderLoop(now: number) {
+    if (dirty && now - lastDraw >= MIN_FRAME_MS) {
       redraw();
       dirty = false;
+      lastDraw = now;
     }
     requestAnimationFrame(renderLoop);
   }
