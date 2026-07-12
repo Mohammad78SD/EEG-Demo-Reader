@@ -23,6 +23,8 @@ finished_event = threading.Event()
 done_sent = False
 producer_thread: threading.Thread | None = None
 replay_lock = threading.Lock()
+producer_lock = threading.Lock()
+producer_started = False
 
 
 def _producer_loop():
@@ -34,6 +36,17 @@ def _start_producer():
     global producer_thread
     producer_thread = threading.Thread(target=_producer_loop, daemon=True)
     producer_thread.start()
+
+
+def _ensure_producer_started():
+    """Starts playback on first client connection, not at server boot —
+    so every session sees row 0 through the end at a true fixed cadence,
+    instead of joining a clock that's already been running since boot."""
+    global producer_started
+    with producer_lock:
+        if not producer_started:
+            producer_started = True
+            _start_producer()
 
 
 async def _broadcaster_loop():
@@ -70,7 +83,6 @@ async def _broadcaster_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _start_producer()
     broadcaster_task = asyncio.create_task(_broadcaster_loop())
     yield
     stop_event.set()
@@ -85,6 +97,7 @@ app = FastAPI(lifespan=lifespan)
 async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     clients.add(websocket)
+    _ensure_producer_started()
     if finished_event.is_set():
         await websocket.send_text("DONE")
     try:
@@ -101,7 +114,7 @@ async def get_channels():
 
 @app.post("/api/replay")
 async def replay():
-    global done_sent
+    global done_sent, producer_started
     with replay_lock:
         stop_event.set()
         if producer_thread is not None:
@@ -110,7 +123,7 @@ async def replay():
         finished_event.clear()
         done_sent = False
         ring.reset()
-        _start_producer()
+        producer_started = False
     return {"status": "replaying"}
 
 
