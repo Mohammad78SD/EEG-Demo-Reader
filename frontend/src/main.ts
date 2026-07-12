@@ -27,6 +27,25 @@ let plot: uPlot | null = null;
 let finished = false;
 let dirty = false;
 
+const VISIBILITY_KEY = "eeg-dashboard-visible-channels";
+let savedVisibility: Record<string, boolean> = {};
+
+function loadVisibility(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(VISIBILITY_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveVisibility() {
+  localStorage.setItem(VISIBILITY_KEY, JSON.stringify(savedVisibility));
+}
+
+function isVisible(name: string, i: number): boolean {
+  return savedVisibility[name] ?? i < DEFAULT_VISIBLE;
+}
+
 let msgCount = 0;
 let sampleCount = 0;
 let lastMetricsUpdate = performance.now();
@@ -55,7 +74,7 @@ function initChart() {
       stroke: channelColors[i],
       width: 1.25,
       points: { show: false },
-      show: i < DEFAULT_VISIBLE,
+      show: isVisible(name, i),
     });
   });
   const opts: uPlot.Options = {
@@ -81,9 +100,11 @@ function initPicker() {
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
-    checkbox.checked = i < DEFAULT_VISIBLE;
+    checkbox.checked = isVisible(name, i);
     checkbox.addEventListener("change", () => {
       plot?.setSeries(i + 1, { show: checkbox.checked });
+      savedVisibility[name] = checkbox.checked;
+      saveVisibility();
     });
 
     label.appendChild(checkbox);
@@ -137,6 +158,7 @@ async function main() {
   const info = await res.json();
   channelNames = info.channels;
   BATCH_SIZE = info.batch_size;
+  savedVisibility = loadVisibility();
   initBuffers(channelNames.length);
   initChart();
   initPicker();
