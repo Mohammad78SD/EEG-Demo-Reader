@@ -1,0 +1,4 @@
+--extra-index-url https://www.piwheels.org/simple
+numpy
+pyqtgraph
+PySide6
