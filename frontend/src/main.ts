@@ -2,17 +2,9 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 
 const SAMPLE_INTERVAL_MS = 2; // 500Hz
-const WINDOW = 2500; // fixed 5s sweep window (2500 * 2ms)
+const WINDOW = 10000; // fixed 5s sweep window (2500 * 2ms)
 const WINDOW_MS = WINDOW * SAMPLE_INTERVAL_MS;
 const DEFAULT_VISIBLE = 3; // channels checked on load
-const MIN_FRAME_MS = 33; // cap redraws at ~30fps — steadier than uncapped rAF on the Pi
-
-// Render-resolution override for benchmarking on the Pi: ?pxr=0.75 rasterizes
-// the canvas at 75% and lets CSS scale it up — quadratic cut in pixels filled
-// per frame, at the cost of slightly softer lines. Default: native ratio.
-const PX_RATIO = parseFloat(
-  new URLSearchParams(location.search).get("pxr") ?? String(window.devicePixelRatio || 1),
-);
 
 const metricsEl = document.getElementById("metrics-text")!;
 const chartEl = document.getElementById("chart")!;
@@ -73,9 +65,6 @@ function initBuffers(n: number) {
 }
 
 function initChart() {
-  // Rasterize at PX_RATIO (see top of file) — pixels filled per frame scale
-  // with its square, the single biggest lever on the Pi's GPU.
-  uPlot.pxRatio = PX_RATIO;
   channelColors = channelNames.map((_, i) => distinctColor(i, channelNames.length));
   const series: uPlot.Series[] = [{ label: "Time (ms)" }];
   channelNames.forEach((name, i) => {
@@ -221,16 +210,13 @@ async function main() {
     updateMetrics(latencyMs);
   };
 
-  // Redraw independent of message arrival rate, capped at ~30fps: a steady
-  // 30 reads smoother on the Pi than uncapped 60 with occasional long frames,
-  // and halves the per-second path-rebuild cost when many channels are on.
-  // Messages landing between redraws just coalesce into the next one.
-  let lastDraw = 0;
-  function renderLoop(now: number) {
-    if (dirty && now - lastDraw >= MIN_FRAME_MS) {
+  // Redraw at whatever rate the browser can actually sustain, independent of
+  // message arrival rate. If a frame takes longer than one tick, later
+  // messages just get coalesced into the next redraw instead of queueing up.
+  function renderLoop() {
+    if (dirty) {
       redraw();
       dirty = false;
-      lastDraw = now;
     }
     requestAnimationFrame(renderLoop);
   }
