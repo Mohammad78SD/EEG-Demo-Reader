@@ -2,7 +2,7 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 
 const SAMPLE_INTERVAL_MS = 2; // 500Hz
-const WINDOW = 10000; // fixed 5s sweep window (2500 * 2ms)
+const WINDOW = 45000; // fixed 5s sweep window (2500 * 2ms)
 const WINDOW_MS = WINDOW * SAMPLE_INTERVAL_MS;
 const DEFAULT_VISIBLE = 3; // channels checked on load
 
