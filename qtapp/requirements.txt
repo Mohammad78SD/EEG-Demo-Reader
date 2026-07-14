@@ -2,3 +2,5 @@
 numpy
 pyqtgraph
 PySide6
+python-dotenv
+

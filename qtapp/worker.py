@@ -3,9 +3,8 @@ import threading
 import numpy as np
 from PySide6.QtCore import QThread, Signal
 
+from config import BATCH_SIZE
 from reader import FileReader
-
-BATCH_SIZE = 16  # ~32ms of samples per signal emission, not one signal per 2ms sample
 
 
 class ProducerWorker(QThread):

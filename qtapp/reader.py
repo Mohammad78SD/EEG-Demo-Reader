@@ -3,8 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-DATA_FILE = Path(__file__).parent / "EEG3840 Sine.txt"
-SAMPLE_INTERVAL_S = 0.002  # 500Hz
+from config import DATA_FILE, SAMPLE_INTERVAL_S
 
 
 class FileReader:

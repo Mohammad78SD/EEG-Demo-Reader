@@ -21,18 +21,19 @@ from reader import FileReader  # noqa: E402
 from sweepbuffer import SweepBuffer
 from worker import ProducerWorker
 
-SAMPLE_INTERVAL_MS = 2  # 500Hz
-WINDOW = 2500  # 90s sweep window, matches the web prototype
-REDRAW_MS = 33  # ~30fps redraw cap, independent of the 500Hz ingest rate
-DEFAULT_VISIBLE = 3  # channels checked on first launch, before any settings exist
-ORG, APP = "negand", "eeg-dashboard"  # QSettings location key
+from config import (
+    APP,
+    DEFAULT_VISIBLE,
+    ORG,
+    REDRAW_MS,
+    SAMPLE_INTERVAL_MS,
+    USE_OPENGL,
+    WINDOW,
+    Y_MAX,
+    Y_MIN,
+)
 
-# CLAUDE.md flags this as a Pi-only empirical call — the software GL driver
-# on the Pi 3B/4B can be slower or less stable than Qt's CPU rasterizer.
-# Leave False on dev machines; flip and re-run the benchmark on the Pi.
-USE_OPENGL = False
-
-# CLAUDE.md perf checklist: antialiasing costs real fps at 500Hz ingest —
+# antialiasing costs real fps at 500Hz ingest —
 # global option, must be set before any PlotWidget/curve is constructed.
 pg.setConfigOptions(antialias=False, useOpenGL=USE_OPENGL)
 
@@ -54,8 +55,6 @@ class MainWindow(QMainWindow):
         self.settings = QSettings(ORG, APP)
         self.sweep = SweepBuffer(reader.num_channels, WINDOW, SAMPLE_INTERVAL_MS)
         self.dirty = False
-        self.msg_count = 0
-        self.sample_count = 0
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -72,15 +71,13 @@ class MainWindow(QMainWindow):
         scroll.setFixedWidth(150)
         outer.addWidget(scroll)
 
-        # Right column: metrics/replay strip on top, plot fills the rest.
+        # Right column: replay strip on top, plot fills the rest.
         right = QVBoxLayout()
         outer.addLayout(right)
 
         top_strip = QHBoxLayout()
-        self.metrics_label = QLabel("connecting...")
         self.replay_button = QPushButton("Replay")
         self.replay_button.clicked.connect(self._on_replay)
-        top_strip.addWidget(self.metrics_label)
         top_strip.addStretch()
         top_strip.addWidget(self.replay_button)
         right.addLayout(top_strip)
@@ -88,7 +85,7 @@ class MainWindow(QMainWindow):
         plot = pg.PlotWidget()
         right.addWidget(plot)
         plot.setBackground("w")
-        plot.setYRange(-60, 60)
+        plot.setYRange(Y_MIN, Y_MAX)
         plot.setXRange(0, float(self.sweep.xs[-1]))
         plot.setLabel("bottom", "Time (ms)")
         # Ranges are pinned by design (fixed sweep window, fixed y scale) —
@@ -132,10 +129,6 @@ class MainWindow(QMainWindow):
         self.redraw_timer.timeout.connect(self._redraw)
         self.redraw_timer.start(REDRAW_MS)
 
-        self.metrics_timer = QTimer(self)
-        self.metrics_timer.timeout.connect(self._update_metrics)
-        self.metrics_timer.start(1000)
-
     def _start_worker(self):
         self.worker = ProducerWorker(self.reader)
         self.worker.batch_ready.connect(self._on_batch)
@@ -148,10 +141,16 @@ class MainWindow(QMainWindow):
         self.settings.setValue(f"visible/{name}", visible)
 
     def _on_batch(self, batch: np.ndarray):
-        self.sweep.push(batch)
-        self.msg_count += 1
-        self.sample_count += batch.shape[0]
+        leftover = self.sweep.push_until_full(batch)
         self.dirty = True
+        if leftover is not None:
+            # Window just filled mid-batch. Force one paint of the
+            # completed window before wiping it, so those last samples
+            # get shown at least once instead of being erased unseen.
+            self._redraw()
+            self.sweep.reset()
+            self.sweep.push_until_full(leftover)
+            self.dirty = True
 
     def _on_finished(self):
         self.setWindowTitle("EEG Dashboard (Qt) — playback complete")
@@ -159,20 +158,15 @@ class MainWindow(QMainWindow):
     def _redraw(self):
         if not self.dirty:
             return
+        pos = self.sweep.position
         for ch, curve in enumerate(self.curves):
             if curve.isVisible():  # skip data churn for channels nobody sees
-                # connect="finite" breaks the line at NaN — the unwritten
-                # tail of the sweep window — instead of drawing a stray
-                # segment back to the last real sample.
-                curve.setData(self.sweep.xs, self.sweep.data[ch], connect="finite")
+                # Slice to the written prefix only — the unwritten NaN tail
+                # never needs to reach pyqtgraph at all, so there's nothing
+                # to break a line on and no full-window rescan wasted on
+                # empty space that isn't visible yet anyway.
+                curve.setData(self.sweep.xs[:pos], self.sweep.data[ch, :pos])
         self.dirty = False
-
-    def _update_metrics(self):
-        self.metrics_label.setText(
-            f"{self.msg_count} msg/s | {self.sample_count} samples/s"
-        )
-        self.msg_count = 0
-        self.sample_count = 0
 
     def _on_replay(self):
         self.replay_button.setEnabled(False)
